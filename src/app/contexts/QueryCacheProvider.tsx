@@ -1,10 +1,11 @@
 import {
   createContext,
+  MutableRefObject,
   PropsWithChildren,
-  useCallback,
   useRef,
   useState,
 } from "react";
+import { EventEmitter } from "../utils/eventEmitter";
 
 type Query = {
   data: { name: string }[];
@@ -16,16 +17,9 @@ type Queries = {
   [queryKey: string]: Query;
 };
 
-type QueriesFetching = {
-  [queryKey: string]: boolean;
-};
-
 type QueryCache = {
-  queries: Queries;
-  fetch: (
-    queryKey: string,
-    queryFn: () => Promise<{ name: string }[]>
-  ) => Promise<void>;
+  queriesRef: MutableRefObject<Queries>;
+  queryEventEmitter: EventEmitter;
 };
 
 export const QueryCacheContext = createContext<QueryCache | undefined>(
@@ -33,56 +27,14 @@ export const QueryCacheContext = createContext<QueryCache | undefined>(
 );
 
 export const QueryCacheProvider = ({ children }: PropsWithChildren) => {
-  const [queries, setQueries] = useState<Queries>({});
+  const [queryEventEmitter] = useState(new EventEmitter());
 
-  const queriesFetchingRef = useRef<QueriesFetching>({});
-
-  const fetch = useCallback(
-    async (queryKey: string, queryFn: () => Promise<{ name: string }[]>) => {
-      const isFetching = queriesFetchingRef.current[queryKey];
-
-      if (!isFetching) {
-        queriesFetchingRef.current[queryKey] = true;
-
-        setQueries((prevCache) => ({
-          ...prevCache,
-          [queryKey]: {
-            data: [],
-            status: "loading",
-            errorMsg: "",
-          },
-        }));
-
-        try {
-          const data = await queryFn();
-
-          setQueries((prevCache) => ({
-            ...prevCache,
-            [queryKey]: {
-              data,
-              status: "success",
-              errorMsg: "",
-            },
-          }));
-        } catch (error) {
-          setQueries((prevCache) => ({
-            ...prevCache,
-            [queryKey]: {
-              data: [],
-              status: "error",
-              errorMsg: "Internal Error",
-            },
-          }));
-        } finally {
-          queriesFetchingRef.current[queryKey] = false;
-        }
-      }
-    },
-    []
-  );
+  const queriesRef = useRef<Queries>({});
 
   return (
-    <QueryCacheContext.Provider value={{ queries, fetch }}>
+    <QueryCacheContext.Provider
+      value={{ queriesRef: queriesRef, queryEventEmitter }}
+    >
       {children}
     </QueryCacheContext.Provider>
   );

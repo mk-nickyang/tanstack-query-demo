@@ -1,4 +1,4 @@
-import { useContext, useEffect } from "react";
+import { useContext, useEffect, useReducer, useState } from "react";
 
 import { QueryCacheContext } from "../contexts/QueryCacheProvider";
 import { useEvent } from "./useEvent";
@@ -13,15 +13,54 @@ export const useQuery = (
     throw new Error("No QueryCache set, use QueryCacheProvider to set one");
   }
 
-  const { queries, fetch } = queryCache;
+  const { queriesRef, queryEventEmitter } = queryCache;
+
+  const [, forceRender] = useReducer((x) => x + 1, 0);
 
   const stableQueryFn = useEvent(queryFn);
 
   useEffect(() => {
-    fetch(queryKey, stableQueryFn);
-  }, [fetch, queryKey, stableQueryFn]);
+    queryEventEmitter.addListener(queryKey, forceRender);
+    return () => {
+      queryEventEmitter.removeListener(queryKey);
+    };
+  }, [queryKey, queryEventEmitter]);
 
-  const query = queries[queryKey] || {
+  useEffect(() => {
+    const fetch = async () => {
+      const isFetching = queriesRef.current[queryKey]?.status === "loading";
+
+      if (!isFetching) {
+        queriesRef.current[queryKey] = {
+          data: [],
+          status: "loading",
+          errorMsg: "",
+        };
+        queryEventEmitter.emit(queryKey);
+
+        try {
+          const data = await stableQueryFn();
+          queriesRef.current[queryKey] = {
+            data,
+            status: "success",
+            errorMsg: "",
+          };
+        } catch (error) {
+          queriesRef.current[queryKey] = {
+            data: [],
+            status: "error",
+            errorMsg: "Internal Error",
+          };
+        } finally {
+          queryEventEmitter.emit(queryKey);
+        }
+      }
+    };
+
+    fetch();
+  }, [queriesRef, queryEventEmitter, queryKey, stableQueryFn]);
+
+  const query = queriesRef.current[queryKey] || {
     data: [],
     status: "loading",
     errorMsg: "",
