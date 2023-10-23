@@ -5,20 +5,27 @@ import {
   useRef,
   useState,
 } from "react";
-import axios from "axios";
 
-const getPokemonData = async () => {
-  const res = await axios.get<{ results: { name: string }[] }>(
-    "https://pokeapi.co/api/v2/pokemon?limit=20&offset=0"
-  );
-  return res.data.results;
-};
-
-type QueryCache = {
+type Query = {
   data: { name: string }[];
   status: "loading" | "success" | "error";
   errorMsg: string;
-  refetch: () => void;
+};
+
+type Queries = {
+  [queryKey: string]: Query;
+};
+
+type QueriesFetching = {
+  [queryKey: string]: boolean;
+};
+
+type QueryCache = {
+  queries: Queries;
+  fetch: (
+    queryKey: string,
+    queryFn: () => Promise<{ name: string }[]>
+  ) => Promise<void>;
 };
 
 export const QueryCacheContext = createContext<QueryCache | undefined>(
@@ -26,37 +33,56 @@ export const QueryCacheContext = createContext<QueryCache | undefined>(
 );
 
 export const QueryCacheProvider = ({ children }: PropsWithChildren) => {
-  const [data, setData] = useState<{ name: string }[]>([]);
-  const [status, setStatus] = useState<"loading" | "success" | "error">(
-    "loading"
-  );
-  const [errorMsg, setErrorMsg] = useState<string>("");
+  const [queries, setQueries] = useState<Queries>({});
 
-  const isFetchingRef = useRef(false);
+  const queriesFetchingRef = useRef<QueriesFetching>({});
 
-  const refetch = useCallback(async () => {
-    if (!isFetchingRef.current) {
-      isFetchingRef.current = true;
+  const fetch = useCallback(
+    async (queryKey: string, queryFn: () => Promise<{ name: string }[]>) => {
+      const isFetching = queriesFetchingRef.current[queryKey];
 
-      try {
-        setStatus("loading");
+      if (!isFetching) {
+        queriesFetchingRef.current[queryKey] = true;
 
-        const data = await getPokemonData();
+        setQueries((prevCache) => ({
+          ...prevCache,
+          [queryKey]: {
+            data: [],
+            status: "loading",
+            errorMsg: "",
+          },
+        }));
 
-        setData(data);
-        setErrorMsg("");
-        setStatus("success");
-      } catch (error) {
-        setErrorMsg("Internal Error");
-        setStatus("error");
-      } finally {
-        isFetchingRef.current = false;
+        try {
+          const data = await queryFn();
+
+          setQueries((prevCache) => ({
+            ...prevCache,
+            [queryKey]: {
+              data,
+              status: "success",
+              errorMsg: "",
+            },
+          }));
+        } catch (error) {
+          setQueries((prevCache) => ({
+            ...prevCache,
+            [queryKey]: {
+              data: [],
+              status: "error",
+              errorMsg: "Internal Error",
+            },
+          }));
+        } finally {
+          queriesFetchingRef.current[queryKey] = false;
+        }
       }
-    }
-  }, []);
+    },
+    []
+  );
 
   return (
-    <QueryCacheContext.Provider value={{ data, status, errorMsg, refetch }}>
+    <QueryCacheContext.Provider value={{ queries, fetch }}>
       {children}
     </QueryCacheContext.Provider>
   );

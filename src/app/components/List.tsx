@@ -1,9 +1,9 @@
 "use client";
 
-import { useQuery } from "../hooks/useQuery";
+import { useListPokemon } from "../hooks/useListPokemon";
 
 export default function List() {
-  const { data, status, errorMsg } = useQuery();
+  const { data, status, errorMsg } = useListPokemon();
 
   if (status === "loading") return <p>Loading...</p>;
 

@@ -1,9 +1,9 @@
 "use client";
 
-import { useQuery } from "../hooks/useQuery";
+import { useListPokemon } from "../hooks/useListPokemon";
 
 export default function Stats() {
-  const { data } = useQuery();
+  const { data } = useListPokemon();
 
   return (
     <div>
