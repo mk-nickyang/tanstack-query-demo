@@ -23,6 +23,8 @@ export const useQuery = (options: QueryOptions) => {
 
   const [, forceRender] = useReducer((x) => x + 1, 0);
 
+  const trackedProps = useRef(new Set<string>());
+
   const stableQueryFn = useEvent(queryFn);
 
   useEffect(() => {
@@ -34,24 +36,61 @@ export const useQuery = (options: QueryOptions) => {
 
   const updateQueryResult = useCallback(
     (newResult: Query) => {
-      queriesRef.current[queryKey] = newResult;
-      queryEventEmitter.emit(queryKey);
+      const trackedResult = {} as Query;
+
+      Object.keys(newResult).forEach((resultKey) => {
+        Object.defineProperty(trackedResult, resultKey, {
+          configurable: false,
+          enumerable: true,
+          get: () => {
+            if (!resultKey.startsWith("private_")) {
+              trackedProps.current.add(resultKey);
+            }
+            // @ts-ignore
+            return newResult[resultKey];
+          },
+        });
+      });
+
+      const prevResult = queriesRef.current[queryKey];
+
+      queriesRef.current[queryKey] = trackedResult;
+
+      let shouldRender = trackedProps.current.size === 0;
+
+      trackedProps.current.forEach((trackedProp) => {
+        if (
+          !shouldRender &&
+          // @ts-ignore
+          prevResult[trackedProp] !== newResult[trackedProp]
+        ) {
+          shouldRender = true;
+        }
+      });
+
+      if (shouldRender) {
+        queryEventEmitter.emit(queryKey);
+      }
     },
     [queriesRef, queryEventEmitter, queryKey]
   );
 
   const fetch = useCallback(async () => {
-    if (!queriesRef.current[queryKey]?.isFetching) {
+    if (!queriesRef.current[queryKey]?.private_isFetching) {
       if (queriesRef.current[queryKey]) {
         updateQueryResult({
-          ...queriesRef.current[queryKey],
+          data: queriesRef.current[queryKey].data,
+          status: queriesRef.current[queryKey].status,
           isFetching: true,
+          private_isFetching: true,
+          errorMsg: "",
         });
       } else {
         updateQueryResult({
           data: [],
           status: "loading",
           isFetching: true,
+          private_isFetching: true,
           errorMsg: "",
         });
       }
@@ -62,6 +101,7 @@ export const useQuery = (options: QueryOptions) => {
           data,
           status: "success",
           isFetching: false,
+          private_isFetching: false,
           errorMsg: "",
         });
       } catch (error) {
@@ -69,6 +109,7 @@ export const useQuery = (options: QueryOptions) => {
           data: [],
           status: "error",
           isFetching: false,
+          private_isFetching: false,
           errorMsg: "Internal Error",
         });
       }

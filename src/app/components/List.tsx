@@ -1,9 +1,12 @@
 "use client";
 
 import { useListPokemon } from "../hooks/useListPokemon";
+import { useRenderCheck } from "../hooks/useRenderCheck";
 
 export default function List() {
   const { data, status, errorMsg } = useListPokemon();
+
+  useRenderCheck("List");
 
   if (status === "loading") return <p>Loading...</p>;
 
