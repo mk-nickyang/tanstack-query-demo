@@ -6,12 +6,7 @@ import {
   useState,
 } from "react";
 import { EventEmitter } from "../utils/eventEmitter";
-
-type Query = {
-  data: { name: string }[];
-  status: "loading" | "success" | "error";
-  errorMsg: string;
-};
+import type { Query } from "../types";
 
 type Queries = {
   [queryKey: string]: Query;

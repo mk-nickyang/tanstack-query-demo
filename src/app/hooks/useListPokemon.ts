@@ -10,5 +10,9 @@ const getPokemonData = async () => {
 };
 
 export const useListPokemon = () => {
-  return useQuery("pokemonList", getPokemonData);
+  return useQuery({
+    queryKey: "pokemonList",
+    queryFn: getPokemonData,
+    refetchInterval: 3000,
+  });
 };

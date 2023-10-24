@@ -1,12 +1,18 @@
-import { useContext, useEffect, useReducer, useState } from "react";
+import { useCallback, useContext, useEffect, useReducer, useRef } from "react";
 
 import { QueryCacheContext } from "../contexts/QueryCacheProvider";
 import { useEvent } from "./useEvent";
+import type { Query } from "../types";
 
-export const useQuery = (
-  queryKey: string,
-  queryFn: () => Promise<{ name: string }[]>
-) => {
+type QueryOptions = {
+  queryKey: string;
+  queryFn: () => Promise<{ name: string }[]>;
+  refetchInterval?: number;
+};
+
+export const useQuery = (options: QueryOptions) => {
+  const { queryKey, queryFn, refetchInterval } = options;
+
   const queryCache = useContext(QueryCacheContext);
 
   if (!queryCache) {
@@ -26,43 +32,69 @@ export const useQuery = (
     };
   }, [queryKey, queryEventEmitter]);
 
-  useEffect(() => {
-    const fetch = async () => {
-      const isFetching = queriesRef.current[queryKey]?.status === "loading";
+  const updateQueryResult = useCallback(
+    (newResult: Query) => {
+      queriesRef.current[queryKey] = newResult;
+      queryEventEmitter.emit(queryKey);
+    },
+    [queriesRef, queryEventEmitter, queryKey]
+  );
 
-      if (!isFetching) {
-        queriesRef.current[queryKey] = {
+  const fetch = useCallback(async () => {
+    if (!queriesRef.current[queryKey]?.isFetching) {
+      if (queriesRef.current[queryKey]) {
+        updateQueryResult({
+          ...queriesRef.current[queryKey],
+          isFetching: true,
+        });
+      } else {
+        updateQueryResult({
           data: [],
           status: "loading",
+          isFetching: true,
           errorMsg: "",
-        };
-        queryEventEmitter.emit(queryKey);
-
-        try {
-          const data = await stableQueryFn();
-          queriesRef.current[queryKey] = {
-            data,
-            status: "success",
-            errorMsg: "",
-          };
-        } catch (error) {
-          queriesRef.current[queryKey] = {
-            data: [],
-            status: "error",
-            errorMsg: "Internal Error",
-          };
-        } finally {
-          queryEventEmitter.emit(queryKey);
-        }
+        });
       }
-    };
 
+      try {
+        const data = await stableQueryFn();
+        updateQueryResult({
+          data,
+          status: "success",
+          isFetching: false,
+          errorMsg: "",
+        });
+      } catch (error) {
+        updateQueryResult({
+          data: [],
+          status: "error",
+          isFetching: false,
+          errorMsg: "Internal Error",
+        });
+      }
+    }
+  }, [queriesRef, queryKey, stableQueryFn, updateQueryResult]);
+
+  useEffect(() => {
+    let timeout: NodeJS.Timeout;
+
+    if (refetchInterval) {
+      timeout = setInterval(fetch, refetchInterval);
+    }
+
+    return () => {
+      clearTimeout(timeout);
+    };
+  }, [fetch, refetchInterval]);
+
+  useEffect(() => {
     fetch();
-  }, [queriesRef, queryEventEmitter, queryKey, stableQueryFn]);
+  }, [fetch]);
 
   const query = queriesRef.current[queryKey] || {
     data: [],
     status: "loading",
+    isFetching: true,
     errorMsg: "",
   };
 
